@@ -1,0 +1,71 @@
+# Standalone CI configuration. Select a unique project name for each build:
+# docker compose -p <unique-build-name> -f compose.ci.yaml ...
+# Compose uses that name for images, containers, networks, and volumes.
+services:
+  database:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: conduit
+      POSTGRES_PASSWORD: ci-only-password
+      POSTGRES_DB: conduit
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conduit -d conduit"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DEV_DB_HOSTNAME: database
+      DEV_DB_USERNAME: conduit
+      DEV_DB_PASSWORD: ci-only-password
+      DEV_DB_NAME: conduit
+      DEV_DB_DIALECT: postgres
+      JWT_KEY: ci-only-jwt-secret
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      # Check a database-backed endpoint, not just the listening HTTP port.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/tags').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      API_PROXY_TARGET: http://backend:3001
+    # No backend dependency: frontend integration tests mock API requests.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  tests:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    profiles: ["test"]
+    init: true
+    shm_size: 1gb
+    environment:
+      CI: "true"
+      BE_BASE_URL: http://backend:3001
+      FE_BASE_URL: http://frontend:3000
+      BASE_URL: ${BASE_URL:-http://frontend:3000}
+      PLAYWRIGHT_HTML_OPEN: never
+    # CI supplies the test command. No host bind mounts: Jenkins will copy
+    # reports from each stopped test container before removing it.
+
+volumes:
+  # Compose creates a project-specific volume instead of using local dev data.
+  database-data:
