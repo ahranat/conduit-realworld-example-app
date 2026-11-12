@@ -11,14 +11,14 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: 'html',
   use: {
-    baseURL: 'http://127.0.0.1:3100',
+    baseURL: process.env.BASE_URL ?? 'http://frontend:3000',
     trace: 'retain-on-failure',
   },
   projects: [
     {
       name: 'be.integration',
       testMatch: 'be.integration/**/*.spec.mjs',
-      use: { baseURL: 'http://localhost:3001' },
+      use: { baseURL: process.env.BE_BASE_URL },
     },
     {
       name: 'fe.integration',
@@ -26,6 +26,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ...(useSystemChrome ? { channel: 'chrome' } : {}),
+         baseURL: process.env.FE_BASE_URL,
       },
     },
     {
@@ -36,17 +37,5 @@ export default defineConfig({
         ...(useSystemChrome ? { channel: 'chrome' } : {}),
       },
     },
-  ],
-  webServer: [
-    {
-      command: 'npm run dev -w backend',
-      url: 'http://localhost:3001/',
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'npm run dev -w frontend -- --host 127.0.0.1 --port 3100 --strictPort',
-      url: 'http://127.0.0.1:3100',
-      reuseExistingServer: !process.env.CI,
-    },
-  ],
+  ]
 });
